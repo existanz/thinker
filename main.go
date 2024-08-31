@@ -23,16 +23,12 @@ func main() {
 		fmt.Println(err)
 	}
 
-	err = files.ScanDir(opts.Source)
-	if err != nil {
-		fmt.Println(err)
-	}
-	err = files.ScanDir(opts.Dest)
+	err = files.SyncDirs(opts.Source, opts.Dest)
 	if err != nil {
 		fmt.Println(err)
 	}
 
-	fmt.Println(opts)
+	fmt.Println("Sinchronised")
 
 }
 
