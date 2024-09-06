@@ -67,28 +67,44 @@ func ScanDir(base, dir string, dt *dirTree) error {
 	return nil
 }
 
-func SyncDirs(src, dest string) error {
-	srcTree := dirTree{}
-	destTree := dirTree{}
-
-	err := ScanDir(src, src, &srcTree)
+func SyncDirs(source, dest string) error {
+	absSource, err := GetAbsPath(source)
 	if err != nil {
 		return err
 	}
-	err = ScanDir(dest, dest, &destTree)
+	err = CheckPath(absSource)
+	if err != nil {
+		return err
+	}
+	absDest, err := GetAbsPath(dest)
+	if err != nil {
+		return err
+	}
+	err = CheckPath(absDest)
+	if err != nil {
+		return err
+	}
+	srcTree := dirTree{}
+	destTree := dirTree{}
+
+	err = ScanDir(absSource, absSource, &srcTree)
+	if err != nil {
+		return err
+	}
+	err = ScanDir(absDest, absDest, &destTree)
 	if err != nil {
 		return err
 	}
 	for path, info := range srcTree {
 		destInfo, ok := destTree[path]
 		if !ok {
-			err = CopyFile(src, dest, info)
+			err = CopyFile(absSource, absDest, info)
 			if err != nil {
 				return err
 			}
 		} else {
 			if info.modifiedAt.After(destInfo.modifiedAt) {
-				err = CopyFile(path, dest, info)
+				err = CopyFile(path, absDest, info)
 				if err != nil {
 					return err
 				}

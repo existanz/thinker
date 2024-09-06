@@ -20,24 +20,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	absSource, err := files.GetAbsPath(source)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = files.CheckPath(absSource)
-	if err != nil {
-		log.Fatal(err)
-	}
-	absDest, err := files.GetAbsPath(dest)
-	if err != nil {
-		log.Fatal(err)
-	}
-	err = files.CheckPath(absDest)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	err = files.SyncDirs(absSource, absDest)
+	err = files.SyncDirs(source, dest)
 	if err != nil {
 		log.Fatal(err)
 	}
