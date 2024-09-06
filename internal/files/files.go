@@ -30,9 +30,6 @@ func CheckPath(path string) error {
 }
 
 func GetAbsPath(path string) (string, error) {
-	if path == "" {
-		return "", errors.New("empty path")
-	}
 	return filepath.Abs(path)
 }
 
