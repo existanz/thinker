@@ -21,7 +21,7 @@ type dirTree map[string]fileInfo
 func CheckPath(path string) error {
 	dir, err := os.Stat(path)
 	if err != nil {
-		return err
+		return fmt.Errorf("check path: %w", err)
 	}
 	if dir != nil && !dir.IsDir() {
 		return errors.New("not a directory")
@@ -30,20 +30,17 @@ func CheckPath(path string) error {
 }
 
 func GetAbsPath(path string) (string, error) {
-	if path == "" {
-		return "", errors.New("empty path")
-	}
 	return filepath.Abs(path)
 }
 
 func ScanDir(base, dir string, dt *dirTree) error {
 	files, err := os.ReadDir(dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("read dir: %w", err)
 	}
 	relPath, err := filepath.Rel(base, dir)
 	if err != nil {
-		return err
+		return fmt.Errorf("rel path: %w", err)
 	}
 	for _, file := range files {
 		path := filepath.Join(dir, file.Name())
@@ -56,7 +53,7 @@ func ScanDir(base, dir string, dt *dirTree) error {
 		} else {
 			info, err := file.Info()
 			if err != nil {
-				return err
+				return fmt.Errorf("file info: %w", err)
 			}
 			(*dt)[path] = fileInfo{
 				name:       file.Name(),
@@ -70,28 +67,44 @@ func ScanDir(base, dir string, dt *dirTree) error {
 	return nil
 }
 
-func SyncDirs(src, dest string) error {
-	srcTree := dirTree{}
-	destTree := dirTree{}
-
-	err := ScanDir(src, src, &srcTree)
+func SyncDirs(source, dest string) error {
+	absSource, err := GetAbsPath(source)
+	if err != nil {
+		return fmt.Errorf("get abs path: %w", err)
+	}
+	err = CheckPath(absSource)
 	if err != nil {
 		return err
 	}
-	err = ScanDir(dest, dest, &destTree)
+	absDest, err := GetAbsPath(dest)
+	if err != nil {
+		return fmt.Errorf("get abs path: %w", err)
+	}
+	err = CheckPath(absDest)
+	if err != nil {
+		return err
+	}
+	srcTree := dirTree{}
+	destTree := dirTree{}
+
+	err = ScanDir(absSource, absSource, &srcTree)
+	if err != nil {
+		return err
+	}
+	err = ScanDir(absDest, absDest, &destTree)
 	if err != nil {
 		return err
 	}
 	for path, info := range srcTree {
 		destInfo, ok := destTree[path]
 		if !ok {
-			err = CopyFile(src, dest, info)
+			err = CopyFile(absSource, absDest, info)
 			if err != nil {
 				return err
 			}
 		} else {
 			if info.modifiedAt.After(destInfo.modifiedAt) {
-				err = CopyFile(path, dest, info)
+				err = CopyFile(path, absDest, info)
 				if err != nil {
 					return err
 				}
@@ -108,7 +121,7 @@ func CopyFile(src, dest string, info fileInfo) error {
 		fmt.Println(filepath.Dir(dest), dest)
 		err := os.MkdirAll(dest, os.ModePerm)
 		if err != nil {
-			return err
+			return fmt.Errorf("make dir: %w", err)
 		}
 	}
 	fmt.Println(info.path, info.name)
@@ -116,19 +129,19 @@ func CopyFile(src, dest string, info fileInfo) error {
 	destFilePath := filepath.Join(dest, info.name)
 	srcFile, err := os.Open(srcFilePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open file: %w", err)
 	}
 	defer srcFile.Close()
 
 	destFile, err := os.Create(destFilePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("create file: %w", err)
 	}
 	defer destFile.Close()
 
 	_, err = io.Copy(destFile, srcFile)
 	if err != nil {
-		return err
+		return fmt.Errorf("copy file: %w", err)
 	}
 
 	return nil

@@ -4,53 +4,38 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"thinker/internal/files"
 )
 
-type Options struct {
-	Source string
-	Dest   string
-}
-
 func main() {
-
-	var opts Options
-	flag.StringVar(&opts.Source, "src", "", "Source folder")
-	flag.StringVar(&opts.Dest, "dest", "", "Destination folder")
+	var (
+		source string
+		dest   string
+	)
+	flag.StringVar(&source, "src", "", "Source folder")
+	flag.StringVar(&dest, "dest", "", "Destination folder")
 	flag.Parse()
-	err := ValidateOptions(&opts)
+	err := validateOptions(source, dest)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 	}
 
-	err = files.SyncDirs(opts.Source, opts.Dest)
+	err = files.SyncDirs(source, dest)
 	if err != nil {
-		fmt.Println(err)
+		log.Fatal(err)
 	}
 
 	fmt.Println("Sinchronised")
 
 }
 
-func ValidateOptions(opts *Options) error {
-	absSrc, err := files.GetAbsPath(opts.Source)
-	if err != nil {
-		return err
+func validateOptions(source, dest string) error {
+	if source == "" || dest == "" {
+		return errors.New("empty path")
 	}
-	absDest, err := files.GetAbsPath(opts.Dest)
-	if err != nil {
-		return err
-	}
-	if err := files.CheckPath(absSrc); err != nil {
-		return err
-	}
-	if err := files.CheckPath(absDest); err != nil {
-		return err
-	}
-	if absSrc == absDest {
+	if source == dest {
 		return errors.New("source and destination are the same")
 	}
-	opts.Source = absSrc
-	opts.Dest = absDest
 	return nil
 }
