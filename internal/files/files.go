@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"thinker/internal/hash"
 	"time"
 )
 
@@ -13,6 +14,7 @@ type fileInfo struct {
 	name       string
 	path       string
 	size       int64
+	hash       []byte
 	modifiedAt time.Time
 }
 
@@ -55,10 +57,11 @@ func ScanDir(base, dir string, dt *dirTree) error {
 			if err != nil {
 				return fmt.Errorf("file info: %w", err)
 			}
-			(*dt)[path] = fileInfo{
+			(*dt)[relPath] = fileInfo{
 				name:       file.Name(),
 				path:       relPath,
 				size:       info.Size(),
+				hash:       getHash(path),
 				modifiedAt: info.ModTime(),
 			}
 		}
@@ -103,10 +106,12 @@ func SyncDirs(source, dest string) error {
 				return err
 			}
 		} else {
-			if info.modifiedAt.After(destInfo.modifiedAt) {
-				err = CopyFile(path, absDest, info)
-				if err != nil {
-					return err
+			if string(info.hash) != string(destInfo.hash) {
+				if info.modifiedAt.After(destInfo.modifiedAt) {
+					err = CopyFile(absSource, absDest, info)
+					if err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -118,18 +123,17 @@ func CopyFile(src, dest string, info fileInfo) error {
 	if info.path != "." {
 		src = filepath.Join(src, info.path)
 		dest = filepath.Join(dest, info.path)
-		fmt.Println(filepath.Dir(dest), dest)
 		err := os.MkdirAll(dest, os.ModePerm)
 		if err != nil {
 			return fmt.Errorf("make dir: %w", err)
 		}
 	}
-	fmt.Println(info.path, info.name)
 	srcFilePath := filepath.Join(src, info.name)
+	fmt.Println(srcFilePath)
 	destFilePath := filepath.Join(dest, info.name)
 	srcFile, err := os.Open(srcFilePath)
 	if err != nil {
-		return fmt.Errorf("open file: %w", err)
+		return fmt.Errorf("open file for copy: %w", err)
 	}
 	defer srcFile.Close()
 
@@ -145,4 +149,11 @@ func CopyFile(src, dest string, info fileInfo) error {
 	}
 
 	return nil
+}
+
+func getHash(path string) []byte {
+	file, _ := os.Open(path)
+	data, _ := io.ReadAll(file)
+	defer file.Close()
+	return hash.MD5(data)
 }
