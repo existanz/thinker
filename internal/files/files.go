@@ -6,8 +6,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"thinker/internal/hash"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type fileInfo struct {
@@ -106,11 +109,10 @@ func getDirTrees(source, dest string) (*dirTree, *dirTree, error) {
 	srcTree := dirTree{basePath: absSource, tree: make(map[string]fileInfo)}
 	destTree := dirTree{basePath: absDest, tree: make(map[string]fileInfo)}
 
-	err = scanDir(absSource, &srcTree)
-	if err != nil {
-		return nil, nil, err
-	}
-	err = scanDir(absDest, &destTree)
+	var eg errgroup.Group
+	eg.Go(func() error { return scanDir(absSource, &srcTree) })
+	eg.Go(func() error { return scanDir(absDest, &destTree) })
+	err = eg.Wait()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -118,23 +120,21 @@ func getDirTrees(source, dest string) (*dirTree, *dirTree, error) {
 }
 
 func syncDirTrees(src, dest *dirTree) error {
+	var eg errgroup.Group
+	eg.SetLimit(runtime.NumCPU())
 	for path, info := range src.tree {
 		destInfo, ok := dest.tree[path]
 		if !ok {
-			err := copyFile(src.basePath, dest.basePath, info)
-			if err != nil {
-				return err
-			}
-		} else {
-			if string(info.hash) != string(destInfo.hash) {
-				if info.modifiedAt.After(destInfo.modifiedAt) {
-					err := copyFile(src.basePath, dest.basePath, info)
-					if err != nil {
-						return err
-					}
-				}
+			eg.Go(func() error { return copyFile(src.basePath, dest.basePath, info) })
+		} else if string(info.hash) != string(destInfo.hash) {
+			if info.modifiedAt.After(destInfo.modifiedAt) {
+				eg.Go(func() error { return copyFile(src.basePath, dest.basePath, info) })
 			}
 		}
+	}
+	err := eg.Wait()
+	if err != nil {
+		return err
 	}
 	return nil
 }
