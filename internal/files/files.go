@@ -18,9 +18,12 @@ type fileInfo struct {
 	modifiedAt time.Time
 }
 
-type dirTree map[string]fileInfo
+type dirTree struct {
+	basePath string
+	tree     map[string]fileInfo
+}
 
-func CheckPath(path string) error {
+func checkPath(path string) error {
 	dir, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("check path: %w", err)
@@ -31,16 +34,16 @@ func CheckPath(path string) error {
 	return nil
 }
 
-func GetAbsPath(path string) (string, error) {
+func getAbsPath(path string) (string, error) {
 	return filepath.Abs(path)
 }
 
-func ScanDir(base, dir string, dt *dirTree) error {
+func scanDir(dir string, dt *dirTree) error {
 	files, err := os.ReadDir(dir)
 	if err != nil {
 		return fmt.Errorf("read dir: %w", err)
 	}
-	relPath, err := filepath.Rel(base, dir)
+	relPath, err := filepath.Rel(dt.basePath, dir)
 	if err != nil {
 		return fmt.Errorf("rel path: %w", err)
 	}
@@ -48,7 +51,7 @@ func ScanDir(base, dir string, dt *dirTree) error {
 		path := filepath.Join(dir, file.Name())
 
 		if file.IsDir() {
-			err = ScanDir(base, path, dt)
+			err = scanDir(path, dt)
 			if err != nil {
 				return err
 			}
@@ -57,7 +60,8 @@ func ScanDir(base, dir string, dt *dirTree) error {
 			if err != nil {
 				return fmt.Errorf("file info: %w", err)
 			}
-			(*dt)[relPath] = fileInfo{
+			relFullPath := filepath.Join(relPath, file.Name())
+			dt.tree[relFullPath] = fileInfo{
 				name:       file.Name(),
 				path:       relPath,
 				size:       info.Size(),
@@ -70,45 +74,61 @@ func ScanDir(base, dir string, dt *dirTree) error {
 	return nil
 }
 
-func SyncDirs(source, dest string) error {
-	absSource, err := GetAbsPath(source)
-	if err != nil {
-		return fmt.Errorf("get abs path: %w", err)
-	}
-	err = CheckPath(absSource)
+func SyncDirs(src, dest string) error {
+	srcDT, destDT, err := getDirTrees(src, dest)
 	if err != nil {
 		return err
 	}
-	absDest, err := GetAbsPath(dest)
-	if err != nil {
-		return fmt.Errorf("get abs path: %w", err)
-	}
-	err = CheckPath(absDest)
+	err = syncDirTrees(srcDT, destDT)
 	if err != nil {
 		return err
 	}
-	srcTree := dirTree{}
-	destTree := dirTree{}
+	return nil
+}
 
-	err = ScanDir(absSource, absSource, &srcTree)
+func getDirTrees(source, dest string) (*dirTree, *dirTree, error) {
+	absSource, err := getAbsPath(source)
 	if err != nil {
-		return err
+		return nil, nil, fmt.Errorf("get abs path: %w", err)
 	}
-	err = ScanDir(absDest, absDest, &destTree)
+	err = checkPath(absSource)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	for path, info := range srcTree {
-		destInfo, ok := destTree[path]
+	absDest, err := getAbsPath(dest)
+	if err != nil {
+		return nil, nil, fmt.Errorf("get abs path: %w", err)
+	}
+	err = checkPath(absDest)
+	if err != nil {
+		return nil, nil, err
+	}
+	srcTree := dirTree{basePath: absSource, tree: make(map[string]fileInfo)}
+	destTree := dirTree{basePath: absDest, tree: make(map[string]fileInfo)}
+
+	err = scanDir(absSource, &srcTree)
+	if err != nil {
+		return nil, nil, err
+	}
+	err = scanDir(absDest, &destTree)
+	if err != nil {
+		return nil, nil, err
+	}
+	return &srcTree, &destTree, nil
+}
+
+func syncDirTrees(src, dest *dirTree) error {
+	for path, info := range src.tree {
+		destInfo, ok := dest.tree[path]
 		if !ok {
-			err = CopyFile(absSource, absDest, info)
+			err := copyFile(src.basePath, dest.basePath, info)
 			if err != nil {
 				return err
 			}
 		} else {
 			if string(info.hash) != string(destInfo.hash) {
 				if info.modifiedAt.After(destInfo.modifiedAt) {
-					err = CopyFile(absSource, absDest, info)
+					err := copyFile(src.basePath, dest.basePath, info)
 					if err != nil {
 						return err
 					}
@@ -119,7 +139,7 @@ func SyncDirs(source, dest string) error {
 	return nil
 }
 
-func CopyFile(src, dest string, info fileInfo) error {
+func copyFile(src, dest string, info fileInfo) error {
 	if info.path != "." {
 		src = filepath.Join(src, info.path)
 		dest = filepath.Join(dest, info.path)
@@ -129,7 +149,7 @@ func CopyFile(src, dest string, info fileInfo) error {
 		}
 	}
 	srcFilePath := filepath.Join(src, info.name)
-	fmt.Println(srcFilePath)
+	fmt.Printf("Copied file: %s of size: %d\n", srcFilePath, info.size)
 	destFilePath := filepath.Join(dest, info.name)
 	srcFile, err := os.Open(srcFilePath)
 	if err != nil {
