@@ -86,6 +86,10 @@ func SyncDirs(src, dest string) error {
 	if err != nil {
 		return err
 	}
+	err = syncDirTrees(destDT, srcDT)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
