@@ -2,13 +2,8 @@ package hash
 
 import (
 	"crypto/md5"
-	"crypto/sha256"
-	"hash"
+	"io"
 )
-
-type Hasher struct {
-	hash.Hash
-}
 
 func MD5(data []byte) []byte {
 	hasher := md5.New()
@@ -16,10 +11,13 @@ func MD5(data []byte) []byte {
 	return hasher.Sum(nil)
 }
 
-func H256(data []byte) []byte {
-	hasher := sha256.New()
-	hasher.Write(data)
-	return hasher.Sum(nil)
+func GetHash(r io.Reader) ([]byte, error) {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+
+	return MD5(data), nil
 }
 
 func IsHashEqual(a, b []byte) bool {

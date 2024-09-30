@@ -31,9 +31,11 @@ func checkPath(path string) error {
 	if err != nil {
 		return fmt.Errorf("check path: %w", err)
 	}
+
 	if dir != nil && !dir.IsDir() {
 		return errors.New("not a directory")
 	}
+
 	return nil
 }
 
@@ -46,15 +48,18 @@ func scanDir(dir string, dt *dirTree) error {
 	if err != nil {
 		return fmt.Errorf("read dir: %w", err)
 	}
+
 	relPath, err := filepath.Rel(dt.basePath, dir)
 	if err != nil {
 		return fmt.Errorf("rel path: %w", err)
 	}
+
 	for _, file := range files {
 		path := filepath.Join(dir, file.Name())
 
 		if file.IsDir() {
 			err = scanDir(path, dt)
+
 			if err != nil {
 				return err
 			}
@@ -63,12 +68,19 @@ func scanDir(dir string, dt *dirTree) error {
 			if err != nil {
 				return fmt.Errorf("file info: %w", err)
 			}
+
+			hash, err := getFileHash(path)
+			if err != nil {
+				return fmt.Errorf("get file hash: %w", err)
+			}
+
 			relFullPath := filepath.Join(relPath, file.Name())
+
 			dt.tree[relFullPath] = fileInfo{
 				name:       file.Name(),
 				path:       relPath,
 				size:       info.Size(),
-				hash:       getHash(path),
+				hash:       hash,
 				modifiedAt: info.ModTime(),
 			}
 		}
@@ -82,14 +94,17 @@ func SyncDirs(src, dest string) error {
 	if err != nil {
 		return err
 	}
+
 	err = syncDirTrees(srcDT, destDT)
 	if err != nil {
 		return err
 	}
+
 	err = syncDirTrees(destDT, srcDT)
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
@@ -98,28 +113,36 @@ func getDirTrees(source, dest string) (*dirTree, *dirTree, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("get abs path: %w", err)
 	}
+
 	err = checkPath(absSource)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	absDest, err := getAbsPath(dest)
 	if err != nil {
 		return nil, nil, fmt.Errorf("get abs path: %w", err)
 	}
+
 	err = checkPath(absDest)
 	if err != nil {
 		return nil, nil, err
 	}
+
 	srcTree := dirTree{basePath: absSource, tree: make(map[string]fileInfo)}
 	destTree := dirTree{basePath: absDest, tree: make(map[string]fileInfo)}
 
 	var eg errgroup.Group
+
 	eg.Go(func() error { return scanDir(absSource, &srcTree) })
 	eg.Go(func() error { return scanDir(absDest, &destTree) })
+
 	err = eg.Wait()
+
 	if err != nil {
 		return nil, nil, err
 	}
+
 	return &srcTree, &destTree, nil
 }
 
@@ -130,31 +153,34 @@ func syncDirTrees(src, dest *dirTree) error {
 		destInfo, ok := dest.tree[path]
 		if !ok {
 			eg.Go(func() error { return copyFile(src.basePath, dest.basePath, info) })
-		} else if string(info.hash) != string(destInfo.hash) {
-			if info.modifiedAt.After(destInfo.modifiedAt) {
-				eg.Go(func() error { return copyFile(src.basePath, dest.basePath, info) })
-			}
+		} else if string(info.hash) != string(destInfo.hash) && info.modifiedAt.After(destInfo.modifiedAt) {
+			eg.Go(func() error { return copyFile(src.basePath, dest.basePath, info) })
 		}
 	}
+
 	err := eg.Wait()
 	if err != nil {
 		return err
 	}
+
 	return nil
 }
 
 func copyFile(src, dest string, info fileInfo) error {
-	if info.path != "." {
-		src = filepath.Join(src, info.path)
-		dest = filepath.Join(dest, info.path)
-		err := os.MkdirAll(dest, os.ModePerm)
-		if err != nil {
-			return fmt.Errorf("make dir: %w", err)
-		}
+
+	src = filepath.Join(src, info.path)
+	dest = filepath.Join(dest, info.path)
+
+	err := os.MkdirAll(dest, os.ModePerm)
+	if err != nil {
+		return fmt.Errorf("make dir: %w", err)
 	}
+
 	srcFilePath := filepath.Join(src, info.name)
-	fmt.Printf("Copied file: %s of size: %d\n", srcFilePath, info.size)
 	destFilePath := filepath.Join(dest, info.name)
+
+	fmt.Printf("Copied file: %s of size: %d\n", srcFilePath, info.size)
+
 	srcFile, err := os.Open(srcFilePath)
 	if err != nil {
 		return fmt.Errorf("open file for copy: %w", err)
@@ -175,9 +201,12 @@ func copyFile(src, dest string, info fileInfo) error {
 	return nil
 }
 
-func getHash(path string) []byte {
-	file, _ := os.Open(path)
-	data, _ := io.ReadAll(file)
+func getFileHash(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open file: %w", err)
+	}
 	defer file.Close()
-	return hash.MD5(data)
+
+	return hash.GetHash(file)
 }
